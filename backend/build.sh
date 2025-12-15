@@ -16,7 +16,7 @@ echo "=== Creation du superuser Nizar ==="
 python manage.py shell << EOF
 from django.contrib.auth.models import User
 if not User.objects.filter(username='Nizar').exists():
-    User.objects.create_superuser('Nizar', 'nizar@ocp.ma', 'nizar')
+    User.objects.create_superuser('Nizar', 'nizar@ocp.ma', 'Nizar@OCP2025!')
     print('Superuser Nizar cree avec succes!')
 else:
     print('Superuser Nizar existe deja.')
