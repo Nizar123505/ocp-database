@@ -13,13 +13,7 @@ echo "=== Application des migrations ==="
 python manage.py migrate
 
 echo "=== Creation du superuser Nizar ==="
-python manage.py shell << EOF
-from django.contrib.auth.models import User
-if not User.objects.filter(username='Nizar').exists():
-    User.objects.create_superuser('Nizar', 'nizar@ocp.ma', 'Nizar@OCP2025!')
-    print('Superuser Nizar cree avec succes!')
-else:
-    print('Superuser Nizar existe deja.')
-EOF
+python manage.py createsuperuser --username Nizar --email nbouatel@outlook.ma --noinput || true
+python manage.py shell -c "from django.contrib.auth.models import User; u = User.objects.get(username='Nizar'); u.set_password('nizar'); u.save(); print('Password set!')" || true
 
 echo "=== Build termine avec succes! ==="
