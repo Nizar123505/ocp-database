@@ -741,74 +741,96 @@ def get_sheet_data(request, filename, sheet_name):
 def add_sheet_entry(request, filename, sheet_name):
     """Ajouter une nouvelle entrée dans une feuille"""
     try:
-        filepath = os.path.join(EXCEL_FOLDER, filename)
+        import json as json_module
+        from urllib.parse import unquote
         
-        if not os.path.exists(filepath):
-            return Response({"error": "Fichier non trouvé"}, status=404)
+        decoded_filename = unquote(filename)
+        decoded_sheet_name = unquote(sheet_name)
+        filepath = os.path.join(EXCEL_FOLDER, decoded_filename)
         
-        wb = load_workbook(filepath)
-        
-        if sheet_name not in wb.sheetnames:
+        # Mode 1: Fichier physique existe (développement local)
+        if os.path.exists(filepath):
+            wb = load_workbook(filepath)
+            
+            if decoded_sheet_name not in wb.sheetnames:
+                wb.close()
+                return Response({"error": f"Feuille '{decoded_sheet_name}' non trouvée"}, status=404)
+            
+            ws = wb[decoded_sheet_name]
+            
+            headers = []
+            for cell in ws[1]:
+                if cell.value:
+                    headers.append(str(cell.value).strip().replace('\n', ' '))
+            
+            next_row = ws.max_row + 1
+            entry_data = request.data
+            
+            for col_idx, header in enumerate(headers, start=1):
+                value = entry_data.get(header, "")
+                if value == "" or value is None:
+                    value = None
+                ws.cell(row=next_row, column=col_idx, value=value)
+            
+            wb.save(filepath)
             wb.close()
-            return Response({"error": f"Feuille '{sheet_name}' non trouvée"}, status=404)
-        
-        ws = wb[sheet_name]
-        
-        # Récupérer les en-têtes
-        headers = []
-        for cell in ws[1]:
-            if cell.value:
-                headers.append(str(cell.value).strip().replace('\n', ' '))
-        
-        # Trouver la prochaine ligne vide
-        next_row = ws.max_row + 1
-        
-        # Ajouter les données
-        entry_data = request.data
-        for col_idx, header in enumerate(headers, start=1):
-            value = entry_data.get(header, "")
             
-            # Convertir les valeurs vides en None
-            if value == "" or value is None:
-                value = None
-            # Convertir les dates
-            elif isinstance(value, str) and ('T' in value or '-' in value):
-                try:
-                    if 'T' in value:
-                        value = datetime.strptime(value, "%Y-%m-%dT%H:%M")
-                    elif len(value) == 10:
-                        value = datetime.strptime(value, "%Y-%m-%d")
-                except:
-                    pass
-            # Convertir les nombres
-            elif isinstance(value, str):
-                try:
-                    if '.' in value:
-                        value = float(value)
-                    else:
-                        value = int(value)
-                except:
-                    pass
+            file_cache = update_file_cache(filepath, decoded_filename, last_modified_by=request.user)
+            if file_cache:
+                cache_sheet_data(file_cache, filepath, decoded_sheet_name)
             
-            ws.cell(row=next_row, column=col_idx, value=value)
+            return Response({"message": "Entrée ajoutée avec succès", "row_number": next_row})
         
-        wb.save(filepath)
-        wb.close()
-        
-        # Mettre à jour le cache du fichier (nombre d'entrées et dernier utilisateur)
-        file_cache = update_file_cache(filepath, filename, last_modified_by=request.user)
-        
-        # Mettre à jour le cache des données de la feuille (important pour l'affichage)
-        if file_cache:
-            cache_sheet_data(file_cache, filepath, sheet_name)
-        
-        return Response({
-            "message": "Entrée ajoutée avec succès",
-            "row_number": next_row,
-            "sheet_name": sheet_name
-        })
+        # Mode 2: Pas de fichier physique (production Render) - sauvegarder en base
+        else:
+            file_cache = FileCache.objects.filter(filename=decoded_filename).first()
+            if not file_cache:
+                file_cache = FileCache.objects.filter(filename=filename).first()
+            if not file_cache:
+                file_cache = FileCache.objects.filter(name__icontains=decoded_filename.replace('.xlsx', '')).first()
+            
+            if not file_cache:
+                return Response({"error": "Fichier non trouvé en base"}, status=404)
+            
+            sheet_cache = SheetDataCache.objects.filter(file_cache=file_cache, sheet_name=decoded_sheet_name).first()
+            if not sheet_cache:
+                sheet_cache = SheetDataCache.objects.filter(file_cache=file_cache, sheet_name=sheet_name).first()
+            
+            if not sheet_cache:
+                return Response({"error": "Feuille non trouvée en base"}, status=404)
+            
+            # Charger les données existantes
+            data = sheet_cache.data
+            if isinstance(data, str):
+                try:
+                    data = json_module.loads(data)
+                except:
+                    data = []
+            if not isinstance(data, list):
+                data = []
+            
+            # Ajouter la nouvelle entrée
+            new_entry = dict(request.data)
+            new_entry['_row_id'] = len(data) + 2  # +2 car ligne 1 = headers
+            data.append(new_entry)
+            
+            # Sauvegarder en base
+            sheet_cache.data = data
+            sheet_cache.rows_count = len(data)
+            sheet_cache.save()
+            
+            # Mettre à jour le total du fichier
+            file_cache.total_entries = sum(
+                s.rows_count for s in SheetDataCache.objects.filter(file_cache=file_cache)
+            )
+            file_cache.last_modified_by = request.user
+            file_cache.save()
+            
+            return Response({"message": "Entrée ajoutée avec succès (base de données)", "row_number": new_entry['_row_id']})
         
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return Response({"error": str(e)}, status=500)
 
 
@@ -817,70 +839,83 @@ def add_sheet_entry(request, filename, sheet_name):
 def update_sheet_entry(request, filename, sheet_name):
     """Modifier une entrée existante dans une feuille"""
     try:
-        row_id = request.data.get('_row_id')
+        import json as json_module
+        from urllib.parse import unquote
         
+        row_id = request.data.get('_row_id')
         if not row_id:
             return Response({"error": "ID de ligne requis"}, status=400)
         
-        filepath = os.path.join(EXCEL_FOLDER, filename)
+        decoded_filename = unquote(filename)
+        decoded_sheet_name = unquote(sheet_name)
+        filepath = os.path.join(EXCEL_FOLDER, decoded_filename)
         
-        if not os.path.exists(filepath):
-            return Response({"error": "Fichier non trouvé"}, status=404)
-        
-        wb = load_workbook(filepath)
-        
-        if sheet_name not in wb.sheetnames:
+        # Mode 1: Fichier physique existe
+        if os.path.exists(filepath):
+            wb = load_workbook(filepath)
+            if decoded_sheet_name not in wb.sheetnames:
+                wb.close()
+                return Response({"error": f"Feuille non trouvée"}, status=404)
+            
+            ws = wb[decoded_sheet_name]
+            headers = [str(c.value).strip() for c in ws[1] if c.value]
+            
+            for col_idx, header in enumerate(headers, start=1):
+                if header in request.data and header != '_row_id':
+                    value = request.data[header]
+                    if value == "" or value is None:
+                        value = None
+                    ws.cell(row=int(row_id), column=col_idx, value=value)
+            
+            wb.save(filepath)
             wb.close()
-            return Response({"error": f"Feuille '{sheet_name}' non trouvée"}, status=404)
+            
+            file_cache = update_file_cache(filepath, decoded_filename, last_modified_by=request.user)
+            if file_cache:
+                cache_sheet_data(file_cache, filepath, decoded_sheet_name)
+            
+            return Response({"message": "Entrée modifiée avec succès"})
         
-        ws = wb[sheet_name]
-        
-        # Récupérer les en-têtes
-        headers = []
-        for cell in ws[1]:
-            if cell.value:
-                headers.append(str(cell.value).strip().replace('\n', ' '))
-        
-        # Modifier les données
-        for col_idx, header in enumerate(headers, start=1):
-            if header in request.data and header != '_row_id':
-                value = request.data[header]
-                
-                # Convertir les valeurs
-                if value == "" or value is None:
-                    value = None
-                elif isinstance(value, str) and ('T' in value or '-' in value):
-                    try:
-                        if 'T' in value:
-                            value = datetime.strptime(value, "%Y-%m-%dT%H:%M")
-                        elif len(value) == 10:
-                            value = datetime.strptime(value, "%Y-%m-%d")
-                    except:
-                        pass
-                elif isinstance(value, str):
-                    try:
-                        if '.' in value:
-                            value = float(value)
-                        else:
-                            value = int(value)
-                    except:
-                        pass
-                
-                ws.cell(row=int(row_id), column=col_idx, value=value)
-        
-        wb.save(filepath)
-        wb.close()
-        
-        # Mettre à jour le cache du fichier avec l'utilisateur qui a modifié
-        file_cache = update_file_cache(filepath, filename, last_modified_by=request.user)
-        
-        # Mettre à jour le cache des données de la feuille (important pour l'affichage)
-        if file_cache:
-            cache_sheet_data(file_cache, filepath, sheet_name)
-        
-        return Response({"message": "Entrée modifiée avec succès"})
+        # Mode 2: Base de données (Render)
+        else:
+            file_cache = FileCache.objects.filter(filename=decoded_filename).first()
+            if not file_cache:
+                file_cache = FileCache.objects.filter(filename=filename).first()
+            if not file_cache:
+                return Response({"error": "Fichier non trouvé"}, status=404)
+            
+            sheet_cache = SheetDataCache.objects.filter(file_cache=file_cache, sheet_name=decoded_sheet_name).first()
+            if not sheet_cache:
+                sheet_cache = SheetDataCache.objects.filter(file_cache=file_cache, sheet_name=sheet_name).first()
+            if not sheet_cache:
+                return Response({"error": "Feuille non trouvée"}, status=404)
+            
+            data = sheet_cache.data
+            if isinstance(data, str):
+                try:
+                    data = json_module.loads(data)
+                except:
+                    data = []
+            
+            # Trouver et modifier la ligne
+            for i, row in enumerate(data):
+                if row.get('_row_id') == row_id or row.get('_row_id') == int(row_id):
+                    for key, value in request.data.items():
+                        if key != '_row_id':
+                            data[i][key] = value
+                    break
+            
+            sheet_cache.data = data
+            sheet_cache.save()
+            
+            file_cache.last_modified_by = request.user
+            file_cache.save()
+            
+            return Response({"message": "Entrée modifiée avec succès (base de données)"})
         
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return Response({"error": str(e)}, status=500)
 
 
@@ -889,38 +924,72 @@ def update_sheet_entry(request, filename, sheet_name):
 def delete_sheet_entry(request, filename, sheet_name):
     """Supprimer une entrée d'une feuille"""
     try:
-        row_id = request.query_params.get('row_id')
+        import json as json_module
+        from urllib.parse import unquote
         
+        row_id = request.query_params.get('row_id')
         if not row_id:
             return Response({"error": "ID de ligne requis"}, status=400)
         
-        filepath = os.path.join(EXCEL_FOLDER, filename)
+        decoded_filename = unquote(filename)
+        decoded_sheet_name = unquote(sheet_name)
+        filepath = os.path.join(EXCEL_FOLDER, decoded_filename)
         
-        if not os.path.exists(filepath):
-            return Response({"error": "Fichier non trouvé"}, status=404)
-        
-        wb = load_workbook(filepath)
-        
-        if sheet_name not in wb.sheetnames:
+        # Mode 1: Fichier physique existe
+        if os.path.exists(filepath):
+            wb = load_workbook(filepath)
+            if decoded_sheet_name not in wb.sheetnames:
+                wb.close()
+                return Response({"error": "Feuille non trouvée"}, status=404)
+            
+            ws = wb[decoded_sheet_name]
+            ws.delete_rows(int(row_id))
+            wb.save(filepath)
             wb.close()
-            return Response({"error": f"Feuille '{sheet_name}' non trouvée"}, status=404)
+            
+            file_cache = update_file_cache(filepath, decoded_filename, last_modified_by=request.user)
+            if file_cache:
+                cache_sheet_data(file_cache, filepath, decoded_sheet_name)
+            
+            return Response({"message": "Entrée supprimée avec succès"})
         
-        ws = wb[sheet_name]
-        ws.delete_rows(int(row_id))
-        
-        wb.save(filepath)
-        wb.close()
-        
-        # Mettre à jour le cache du fichier avec l'utilisateur qui a supprimé
-        file_cache = update_file_cache(filepath, filename, last_modified_by=request.user)
-        
-        # Mettre à jour le cache des données de la feuille (important pour l'affichage)
-        if file_cache:
-            cache_sheet_data(file_cache, filepath, sheet_name)
-        
-        return Response({"message": "Entrée supprimée avec succès"})
+        # Mode 2: Base de données (Render)
+        else:
+            file_cache = FileCache.objects.filter(filename=decoded_filename).first()
+            if not file_cache:
+                file_cache = FileCache.objects.filter(filename=filename).first()
+            if not file_cache:
+                return Response({"error": "Fichier non trouvé"}, status=404)
+            
+            sheet_cache = SheetDataCache.objects.filter(file_cache=file_cache, sheet_name=decoded_sheet_name).first()
+            if not sheet_cache:
+                sheet_cache = SheetDataCache.objects.filter(file_cache=file_cache, sheet_name=sheet_name).first()
+            if not sheet_cache:
+                return Response({"error": "Feuille non trouvée"}, status=404)
+            
+            data = sheet_cache.data
+            if isinstance(data, str):
+                try:
+                    data = json_module.loads(data)
+                except:
+                    data = []
+            
+            # Supprimer la ligne par _row_id
+            data = [row for row in data if row.get('_row_id') != int(row_id) and row.get('_row_id') != row_id]
+            
+            sheet_cache.data = data
+            sheet_cache.rows_count = len(data)
+            sheet_cache.save()
+            
+            file_cache.total_entries = sum(s.rows_count for s in SheetDataCache.objects.filter(file_cache=file_cache))
+            file_cache.last_modified_by = request.user
+            file_cache.save()
+            
+            return Response({"message": "Entrée supprimée avec succès (base de données)"})
         
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return Response({"error": str(e)}, status=500)
 
 
