@@ -432,11 +432,11 @@ export default function Home() {
                   </div>
 
                   <div className="file-sheets-preview">
-                    {file.sheets.slice(0, 3).map((sheet, idx) => (
+                    {(Array.isArray(file.sheets) ? file.sheets : (typeof file.sheets === 'string' ? JSON.parse(file.sheets || '[]') : [])).slice(0, 3).map((sheet, idx) => (
                       <span key={idx} className="sheet-tag">{sheet}</span>
                     ))}
-                    {file.sheets.length > 3 && (
-                      <span className="sheet-tag more">+{file.sheets.length - 3}</span>
+                    {(Array.isArray(file.sheets) ? file.sheets.length : 0) > 3 && (
+                      <span className="sheet-tag more">+{(Array.isArray(file.sheets) ? file.sheets.length : 0) - 3}</span>
                     )}
                   </div>
                   
