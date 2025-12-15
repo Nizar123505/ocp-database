@@ -326,54 +326,62 @@ def refresh_files_cache(request):
 def get_file_sheets(request, filename):
     """Récupérer les feuilles d'un fichier Excel spécifique (depuis le cache)"""
     try:
-        # Essayer de récupérer depuis le cache d'abord
-        cache = FileCache.objects.filter(filename=filename).first()
+        import json as json_module
+        from urllib.parse import unquote
         
-        if cache and cache.sheets_details:
-            # Utiliser les données du cache (instantané)
+        # Décoder le filename (peut contenir des %20, etc.)
+        decoded_filename = unquote(filename)
+        
+        # Chercher par filename exact, ou par filename décodé, ou par nom
+        cache = FileCache.objects.filter(filename=decoded_filename).first()
+        if not cache:
+            cache = FileCache.objects.filter(filename=filename).first()
+        if not cache:
+            # Essayer avec .xlsx ajouté
+            cache = FileCache.objects.filter(filename=f"{decoded_filename}.xlsx").first()
+        if not cache:
+            # Chercher par nom
+            cache = FileCache.objects.filter(name__icontains=decoded_filename.replace('.xlsx', '')).first()
+        
+        if cache:
+            # Parser sheets_json si c'est une chaîne
+            sheets_list = cache.sheets_json
+            if isinstance(sheets_list, str):
+                try:
+                    sheets_list = json_module.loads(sheets_list)
+                except:
+                    sheets_list = []
+            
+            # Parser sheets_details si c'est une chaîne
+            sheets_details = cache.sheets_details
+            if isinstance(sheets_details, str):
+                try:
+                    sheets_details = json_module.loads(sheets_details)
+                except:
+                    sheets_details = {}
+            
             sheets = []
-            for sheet_name in cache.sheets_json:
-                details = cache.sheets_details.get(sheet_name, {})
-                sheets.append({
-                    "name": sheet_name,
-                    "columns_count": details.get('columns', 0),
-                    "entries_count": details.get('entries', 0)
-                })
+            if sheets_list:
+                for sheet_name in sheets_list:
+                    details = sheets_details.get(sheet_name, {}) if sheets_details else {}
+                    sheets.append({
+                        "name": sheet_name,
+                        "columns_count": details.get('columns', 0),
+                        "entries_count": details.get('entries', 0)
+                    })
             
             return Response({
-                "filename": filename,
+                "filename": cache.filename,
                 "file_name": cache.name,
                 "sheets": sheets
             })
         
-        # Fallback: lire le fichier et mettre en cache
-        filepath = os.path.join(EXCEL_FOLDER, filename)
-        
-        if not os.path.exists(filepath):
-            return Response({"error": f"Fichier non trouvé: {filename}"}, status=404)
-        
-        # Mettre en cache et récupérer les détails
-        cache = update_file_cache(filepath, filename)
-        
-        if cache and cache.sheets_details:
-            sheets = []
-            for sheet_name in cache.sheets_json:
-                details = cache.sheets_details.get(sheet_name, {})
-                sheets.append({
-                    "name": sheet_name,
-                    "columns_count": details.get('columns', 0),
-                    "entries_count": details.get('entries', 0)
-                })
-            
-            return Response({
-                "filename": filename,
-                "file_name": cache.name,
-                "sheets": sheets
-            })
-        
-        return Response({"error": "Impossible de charger le fichier"}, status=500)
+        return Response({"error": f"Fichier non trouvé: {filename}"}, status=404)
         
     except Exception as e:
+        print(f"Erreur get_file_sheets: {e}")
+        import traceback
+        traceback.print_exc()
         return Response({"error": str(e)}, status=500)
 
 
