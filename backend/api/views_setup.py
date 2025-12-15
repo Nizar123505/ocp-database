@@ -1,12 +1,14 @@
 """
-Vue de setup optimisée pour charger rapidement les données
+Vue de setup pour charger les données
 """
 from django.http import JsonResponse
 from django.contrib.auth.models import User
 from django.db import transaction
+from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from api.models import FileCache, SheetDataCache
+from datetime import datetime
 import json
 import os
 
@@ -15,9 +17,7 @@ import os
 @permission_classes([AllowAny])
 def setup_database(request):
     """
-    Endpoint optimisé pour initialiser la base de données.
-    GET /api/setup/ - Crée les utilisateurs
-    GET /api/setup/?load_data=true - Crée les utilisateurs ET charge les données (RAPIDE)
+    GET /api/setup/?load_data=true - Charge les utilisateurs ET les données
     """
     load_data = request.GET.get('load_data', 'false').lower() == 'true'
     
@@ -58,7 +58,7 @@ def setup_database(request):
         except Exception as e:
             results['errors'].append(f"User {user_data['username']}: {str(e)}")
     
-    # Charger les données si demandé - VERSION OPTIMISÉE
+    # Charger les données
     if load_data:
         json_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data_export.json')
         
@@ -67,54 +67,55 @@ def setup_database(request):
                 with open(json_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                 
-                # Utiliser une transaction pour plus de rapidité
                 with transaction.atomic():
-                    # Supprimer les anciennes données pour éviter les doublons
                     SheetDataCache.objects.all().delete()
                     FileCache.objects.all().delete()
                     
-                    # Mapping des anciens IDs vers les nouveaux objets
-                    file_id_mapping = {}
+                    file_map = {}
+                    now = timezone.now()
                     
-                    # BULK CREATE pour les fichiers (très rapide)
-                    files_to_create = []
-                    for file_data in data.get('files', []):
-                        fc = FileCache(
-                            name=file_data['name'],
-                            filename=file_data['filename'],
-                            sheets_json=file_data.get('sheets_json', '[]'),
-                            sheets_count=file_data.get('sheets_count', 0),
-                            total_entries=file_data.get('total_entries', 0),
-                            file_size=file_data.get('file_size', 0),
-                            sheets_details=file_data.get('sheets_details', '{}'),
-                            is_deleted=file_data.get('is_deleted', False)
-                        )
-                        files_to_create.append((file_data['id'], fc))
-                    
-                    # Créer tous les fichiers d'un coup
-                    for old_id, fc in files_to_create:
-                        fc.save()
-                        file_id_mapping[old_id] = fc
-                        results['files_created'] += 1
-                    
-                    # BULK CREATE pour les feuilles (très rapide)
-                    sheets_to_create = []
-                    for sheet_data in data.get('sheets', []):
-                        old_file_id = sheet_data.get('file_cache_id')
-                        file_cache = file_id_mapping.get(old_file_id)
-                        
-                        if file_cache:
-                            sdc = SheetDataCache(
-                                file_cache=file_cache,
-                                sheet_name=sheet_data['sheet_name'],
-                                headers=sheet_data.get('headers', '[]'),
-                                columns_info=sheet_data.get('columns_info', '[]'),
-                                data=sheet_data.get('data', '[]'),
-                                rows_count=sheet_data.get('rows_count', 0)
+                    for fd in data.get('files', []):
+                        try:
+                            # Parser la date file_modified
+                            file_mod = fd.get('file_modified')
+                            if file_mod:
+                                if isinstance(file_mod, str):
+                                    try:
+                                        file_mod = datetime.fromisoformat(file_mod.replace('Z', '+00:00'))
+                                    except:
+                                        file_mod = now
+                            else:
+                                file_mod = now
+                            
+                            fc = FileCache.objects.create(
+                                name=fd['name'],
+                                filename=fd['filename'],
+                                sheets_json=fd.get('sheets_json', '[]'),
+                                sheets_count=fd.get('sheets_count', 0),
+                                total_entries=fd.get('total_entries', 0),
+                                file_size=fd.get('file_size', 0),
+                                sheets_details=fd.get('sheets_details', '{}'),
+                                is_deleted=fd.get('is_deleted', False),
+                                file_modified=file_mod
                             )
-                            sheets_to_create.append(sdc)
+                            file_map[fd['id']] = fc
+                            results['files_created'] += 1
+                        except Exception as e:
+                            results['errors'].append(f"File {fd.get('name', '?')}: {str(e)}")
                     
-                    # Créer toutes les feuilles d'un coup
+                    sheets_to_create = []
+                    for sd in data.get('sheets', []):
+                        fc = file_map.get(sd.get('file_cache_id'))
+                        if fc:
+                            sheets_to_create.append(SheetDataCache(
+                                file_cache=fc,
+                                sheet_name=sd['sheet_name'],
+                                headers=sd.get('headers', '[]'),
+                                columns_info=sd.get('columns_info', '[]'),
+                                data=sd.get('data', '[]'),
+                                rows_count=sd.get('rows_count', 0)
+                            ))
+                    
                     if sheets_to_create:
                         SheetDataCache.objects.bulk_create(sheets_to_create)
                         results['sheets_created'] = len(sheets_to_create)
@@ -122,11 +123,11 @@ def setup_database(request):
             except Exception as e:
                 results['errors'].append(f"Data load error: {str(e)}")
         else:
-            results['errors'].append(f"data_export.json not found")
+            results['errors'].append(f"data_export.json not found at {json_path}")
     
     return JsonResponse({
         'status': 'success',
-        'message': 'Configuration terminée!' if not load_data else f"Données chargées: {results['files_created']} fichiers, {results['sheets_created']} feuilles",
+        'message': f"Données chargées: {results['files_created']} fichiers, {results['sheets_created']} feuilles",
         'details': results,
         'credentials': [
             {'username': 'Nizar', 'password': 'nizar', 'is_admin': True},
