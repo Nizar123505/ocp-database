@@ -232,9 +232,14 @@ def sync_all_files_cache():
         except Exception as e:
             print(f"Erreur sync cache pour {filename}: {e}")
     
-    # Supprimer les fichiers supprimés du cache
-    FileCache.objects.exclude(filename__in=existing_filenames).delete()
-    # Supprimer aussi les caches de feuilles orphelins
+    # NE PAS supprimer les fichiers du cache si aucun fichier physique n'est trouvé
+    # Cela permet de garder les données importées via l'API même si les fichiers
+    # physiques ne sont pas présents (ex: en production sur Render)
+    if existing_filenames:
+        # Seulement supprimer si on a trouvé au moins un fichier physique
+        FileCache.objects.filter(is_deleted=False).exclude(filename__in=existing_filenames).update(is_deleted=True)
+    
+    # Supprimer les caches de feuilles orphelins
     SheetDataCache.objects.filter(file_cache__isnull=True).delete()
 
 
