@@ -254,44 +254,47 @@ def get_current_user(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_excel_files(request):
-    """Récupérer la liste des fichiers Excel disponibles (depuis le cache)"""
+    """Récupérer la liste des fichiers Excel disponibles (depuis le cache) - VERSION SIMPLE ET RAPIDE"""
     try:
-        # Synchroniser seulement si des fichiers physiques existent (pas en production Render)
-        if os.path.exists(EXCEL_FOLDER) and glob.glob(os.path.join(EXCEL_FOLDER, '*.xlsx')):
-            sync_all_files_cache()
+        # PAS de synchronisation sur Render - juste récupérer depuis la base
+        # Synchroniser seulement en local si des fichiers physiques existent
+        is_render = os.environ.get('RENDER', False)
+        if not is_render:
+            try:
+                if os.path.exists(EXCEL_FOLDER) and glob.glob(os.path.join(EXCEL_FOLDER, '*.xlsx')):
+                    sync_all_files_cache()
+            except:
+                pass  # Ignorer les erreurs de sync
         
-        # Récupérer depuis le cache (très rapide) - EXCLURE les fichiers supprimés
+        # Récupérer depuis le cache - TRÈS RAPIDE
         cached_files = FileCache.objects.filter(is_deleted=False)
         
         excel_files = []
         for cache in cached_files:
-            # Récupérer les infos du dernier utilisateur qui a modifié
-            last_modified_by_info = None
-            if cache.last_modified_by:
-                user = cache.last_modified_by
-                last_modified_by_info = {
-                    "id": user.id,
-                    "username": user.username,
-                    "full_name": f"{user.first_name} {user.last_name}".strip() or user.username
-                }
-            
-            # Gérer le cas où file_modified est None
-            modified_str = ""
-            if cache.file_modified:
-                modified_str = cache.file_modified.isoformat()
-            
-            excel_files.append({
-                "id": cache.filename.replace(' ', '_').replace('.xlsx', ''),
-                "name": cache.name,
-                "filename": cache.filename,
-                "path": cache.file_path if hasattr(cache, 'file_path') else "",
-                "sheets_count": cache.sheets_count,
-                "sheets": cache.sheets_json,
-                "total_entries": cache.total_entries,
-                "size": cache.file_size,
-                "modified": modified_str,
-                "last_modified_by": last_modified_by_info
-            })
+            try:
+                last_modified_by_info = None
+                if cache.last_modified_by:
+                    last_modified_by_info = {
+                        "id": cache.last_modified_by.id,
+                        "username": cache.last_modified_by.username,
+                        "full_name": cache.last_modified_by.username
+                    }
+                
+                excel_files.append({
+                    "id": cache.filename.replace(' ', '_').replace('.xlsx', '') if cache.filename else str(cache.id),
+                    "name": cache.name or "Sans nom",
+                    "filename": cache.filename or "",
+                    "path": getattr(cache, 'file_path', "") or "",
+                    "sheets_count": cache.sheets_count or 0,
+                    "sheets": cache.sheets_json or [],
+                    "total_entries": cache.total_entries or 0,
+                    "size": cache.file_size or 0,
+                    "modified": cache.file_modified.isoformat() if cache.file_modified else "",
+                    "last_modified_by": last_modified_by_info
+                })
+            except Exception as e:
+                print(f"Erreur fichier {cache.id}: {e}")
+                continue
         
         return Response({
             "files": excel_files,
@@ -299,9 +302,8 @@ def get_excel_files(request):
         })
         
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return Response({"error": str(e)}, status=500)
+        print(f"Erreur get_excel_files: {e}")
+        return Response({"files": [], "total_files": 0, "error": str(e)})
 
 
 @api_view(['POST'])
