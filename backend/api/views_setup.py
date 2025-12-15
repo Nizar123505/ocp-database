@@ -17,9 +17,17 @@ import os
 @permission_classes([AllowAny])
 def setup_database(request):
     """
-    GET /api/setup/?load_data=true - Charge les utilisateurs ET les données
+    GET /api/setup/ - Crée les utilisateurs ET charge les fichiers SI la base est vide
+    GET /api/setup/?force=true - Force le rechargement (efface et recharge)
     """
-    load_data = request.GET.get('load_data', 'false').lower() == 'true'
+    force_reload = request.GET.get('force', 'false').lower() == 'true'
+    # Compatibilité avec l'ancien paramètre
+    if request.GET.get('load_data', 'false').lower() == 'true':
+        force_reload = True
+    
+    # Vérifier si des fichiers existent déjà
+    existing_files = FileCache.objects.count()
+    load_data = force_reload or existing_files == 0
     
     results = {
         'users_created': [],
@@ -58,7 +66,7 @@ def setup_database(request):
         except Exception as e:
             results['errors'].append(f"User {user_data['username']}: {str(e)}")
     
-    # Charger les données
+    # Charger les données (seulement si base vide ou force=true)
     if load_data:
         json_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data_export.json')
         
@@ -68,8 +76,10 @@ def setup_database(request):
                     data = json.load(f)
                 
                 with transaction.atomic():
-                    SheetDataCache.objects.all().delete()
-                    FileCache.objects.all().delete()
+                    # Seulement effacer si on force le rechargement
+                    if force_reload:
+                        SheetDataCache.objects.all().delete()
+                        FileCache.objects.all().delete()
                     
                     file_map = {}
                     now = timezone.now()
@@ -126,10 +136,23 @@ def setup_database(request):
         else:
             results['errors'].append(f"data_export.json not found at {json_path}")
     
+    # Compter les fichiers actuels dans la base
+    current_files = FileCache.objects.filter(is_deleted=False).count()
+    current_sheets = SheetDataCache.objects.count()
+    
+    if results['files_created'] == 0 and current_files > 0:
+        message = f"Backend prêt! {current_files} fichiers, {current_sheets} feuilles en base"
+    else:
+        message = f"Données chargées: {results['files_created']} fichiers, {results['sheets_created']} feuilles"
+    
     return JsonResponse({
         'status': 'success',
-        'message': f"Données chargées: {results['files_created']} fichiers, {results['sheets_created']} feuilles",
-        'details': results,
+        'message': message,
+        'details': {
+            **results,
+            'existing_files': current_files,
+            'existing_sheets': current_sheets
+        },
         'credentials': [
             {'username': 'Nizar', 'password': 'nizar', 'is_admin': True},
             {'username': 'Ahmed', 'password': 'ahmed', 'is_admin': True},
