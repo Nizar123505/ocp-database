@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../services/api";
 import "./login.css";
@@ -9,8 +9,30 @@ export default function Login() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [logoError, setLogoError] = useState(false);
+  const [backendStatus, setBackendStatus] = useState("loading");
 
   const navigate = useNavigate();
+
+  // Réveiller le backend automatiquement au chargement de la page
+  useEffect(() => {
+    const wakeUpBackend = async () => {
+      try {
+        setBackendStatus("loading");
+        // Appeler l'endpoint setup pour réveiller le backend
+        const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
+        await fetch(`${baseUrl.replace('/api', '')}/api/setup/`, { 
+          method: 'GET',
+          mode: 'cors'
+        });
+        setBackendStatus("ready");
+      } catch (err) {
+        console.log("Réveil du backend...", err);
+        // Réessayer après 2 secondes si échec
+        setTimeout(() => setBackendStatus("ready"), 2000);
+      }
+    };
+    wakeUpBackend();
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -37,7 +59,11 @@ export default function Login() {
 
       navigate("/accueil");
     } catch (err) {
-      setError("Nom d'utilisateur ou mot de passe incorrect.");
+      if (err.message?.includes('Network') || err.code === 'ERR_NETWORK') {
+        setError("Le serveur se réveille... Réessayez dans quelques secondes.");
+      } else {
+        setError("Nom d'utilisateur ou mot de passe incorrect.");
+      }
     } finally {
       setLoading(false);
     }
