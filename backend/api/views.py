@@ -256,8 +256,9 @@ def get_current_user(request):
 def get_excel_files(request):
     """Récupérer la liste des fichiers Excel disponibles (depuis le cache)"""
     try:
-        # TOUJOURS synchroniser le cache pour détecter les nouveaux fichiers et modifications
-        sync_all_files_cache()
+        # Synchroniser seulement si des fichiers physiques existent (pas en production Render)
+        if os.path.exists(EXCEL_FOLDER) and glob.glob(os.path.join(EXCEL_FOLDER, '*.xlsx')):
+            sync_all_files_cache()
         
         # Récupérer depuis le cache (très rapide) - EXCLURE les fichiers supprimés
         cached_files = FileCache.objects.filter(is_deleted=False)
@@ -274,16 +275,21 @@ def get_excel_files(request):
                     "full_name": f"{user.first_name} {user.last_name}".strip() or user.username
                 }
             
+            # Gérer le cas où file_modified est None
+            modified_str = ""
+            if cache.file_modified:
+                modified_str = cache.file_modified.isoformat()
+            
             excel_files.append({
                 "id": cache.filename.replace(' ', '_').replace('.xlsx', ''),
                 "name": cache.name,
                 "filename": cache.filename,
-                "path": cache.file_path,
+                "path": cache.file_path if hasattr(cache, 'file_path') else "",
                 "sheets_count": cache.sheets_count,
                 "sheets": cache.sheets_json,
                 "total_entries": cache.total_entries,
                 "size": cache.file_size,
-                "modified": cache.file_modified.isoformat(),
+                "modified": modified_str,
                 "last_modified_by": last_modified_by_info
             })
         
@@ -293,6 +299,8 @@ def get_excel_files(request):
         })
         
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return Response({"error": str(e)}, status=500)
 
 

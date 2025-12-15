@@ -90,6 +90,7 @@ def setup_database(request):
                             fc = FileCache.objects.create(
                                 name=fd['name'],
                                 filename=fd['filename'],
+                                file_path=fd.get('file_path', fd['filename']),
                                 sheets_json=fd.get('sheets_json', '[]'),
                                 sheets_count=fd.get('sheets_count', 0),
                                 total_entries=fd.get('total_entries', 0),
