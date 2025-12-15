@@ -37,8 +37,15 @@ for u in users:
     print(f'  User {u[\"username\"]}: {\"created\" if created else \"updated\"}')
 
 print('Chargement des fichiers Excel...')
-json_path = 'data_export.json'
-if os.path.exists(json_path):
+# Chercher le fichier dans plusieurs emplacements possibles
+possible_paths = ['data_export.json', '/opt/render/project/src/backend/data_export.json', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data_export.json')]
+json_path = None
+for p in possible_paths:
+    if os.path.exists(p):
+        json_path = p
+        break
+print(f'Path trouve: {json_path}')
+if json_path and os.path.exists(json_path):
     with open(json_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
     
@@ -78,7 +85,9 @@ if os.path.exists(json_path):
             print(f'  Sheets: {len(sheets)} created')
     print('Donnees chargees avec succes!')
 else:
-    print(f'Fichier {json_path} non trouve')
+    print('Fichier data_export.json non trouve!')
+    print(f'Repertoire courant: {os.getcwd()}')
+    print(f'Contenu du repertoire: {os.listdir(\".\")}')
 "
 
 echo "=== Build termine avec succes! ==="
