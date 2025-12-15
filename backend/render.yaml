@@ -1,0 +1,31 @@
+databases:
+  - name: ocp-db
+    databaseName: ocp_database
+    user: ocp_user
+    plan: free
+
+services:
+  # Backend Django API
+  - type: web
+    name: ocp-backend
+    runtime: python
+    plan: free
+    buildCommand: |
+      pip install -r requirements-prod.txt
+      python manage.py collectstatic --noinput
+      python manage.py migrate
+    startCommand: gunicorn backend.wsgi:application --bind 0.0.0.0:$PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: DEBUG
+        value: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ocp-db
+          property: connectionString
+      - key: ALLOWED_HOSTS
+        value: .onrender.com
+

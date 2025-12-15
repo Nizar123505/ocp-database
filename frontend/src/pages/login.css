@@ -1,0 +1,277 @@
+/* --- Variables CSS --- */
+:root {
+  --ocp-green: #2E7D32;
+  --ocp-green-light: #4CAF50;
+  --ocp-green-dark: #1B5E20;
+}
+
+/* --- Fond de la page --- */
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  background: linear-gradient(180deg, var(--ocp-green) 0%, var(--ocp-green) 20%, transparent 20%),
+              url('https://images.unsplash.com/photo-1578575437130-527eed3abbec?q=80&w=2070') center/cover no-repeat;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  padding-top: 0;
+}
+
+/* --- Header avec logo OCP --- */
+.login-header {
+  width: 100%;
+  background: var(--ocp-green);
+  padding: 1.5rem 2rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.logo-wrapper {
+  background: white;
+  border-radius: 16px;
+  padding: 1rem 1.5rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.ocp-logo {
+  height: 100px;
+  width: auto;
+  object-fit: contain;
+}
+
+.logo-fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.logo-text {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #2E7D32;
+  letter-spacing: 2px;
+}
+
+/* --- Carte principale --- */
+.login-card {
+  background-color: white;
+  padding: 2.5rem;
+  border-radius: 16px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  width: 100%;
+  max-width: 420px;
+  text-align: center;
+  margin-top: 2rem;
+}
+
+.login-icon {
+  width: 50px;
+  height: 50px;
+  background: linear-gradient(135deg, #e8f5e9, #c8e6c9);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 1rem;
+  color: var(--ocp-green);
+}
+
+/* --- Titres --- */
+.title {
+  color: #333;
+  font-size: 1.6rem;
+  margin-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.title svg {
+  color: var(--ocp-green);
+}
+
+.subtitle {
+  color: #666;
+  font-size: 0.9rem;
+  margin-bottom: 2rem;
+  line-height: 1.5;
+}
+
+/* --- Formulaire --- */
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.form-group {
+  text-align: left;
+  margin-bottom: 0.5rem;
+}
+
+.form-group label {
+  display: block;
+  color: #222222 !important;
+  -webkit-text-fill-color: #222222 !important;
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 0.75rem;
+  opacity: 1 !important;
+  visibility: visible !important;
+  text-shadow: none;
+}
+
+.login-form .form-group label,
+.login-card .form-group label {
+  color: #222222 !important;
+  -webkit-text-fill-color: #222222 !important;
+  font-weight: 700;
+}
+
+.input-wrapper {
+  position: relative;
+  background-color: #ffffff;
+  border-radius: 10px;
+}
+
+.input-wrapper svg {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #999999;
+  z-index: 10;
+  pointer-events: none;
+  width: 16px;
+  height: 16px;
+}
+
+.form-group input {
+  width: 100%;
+  padding: 14px 15px 14px 48px !important;
+  border: 2px solid #ccc;
+  border-radius: 10px;
+  outline: none;
+  transition: all 0.2s;
+  font-size: 1rem;
+  background-color: #ffffff !important;
+  box-sizing: border-box;
+  color: #000000 !important;
+  -webkit-text-fill-color: #000000 !important;
+}
+
+.form-group input.has-value {
+  padding-left: 15px !important;
+}
+
+.form-group input:focus {
+  border-color: var(--ocp-green);
+  background-color: #ffffff !important;
+  box-shadow: 0 0 0 3px rgba(46, 125, 50, 0.1);
+  color: #000000 !important;
+  -webkit-text-fill-color: #000000 !important;
+}
+
+.form-group input::placeholder {
+  color: #888888 !important;
+  -webkit-text-fill-color: #888888 !important;
+  opacity: 1;
+}
+
+.form-group input:-webkit-autofill,
+.form-group input:-webkit-autofill:hover,
+.form-group input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important;
+  -webkit-text-fill-color: #000000 !important;
+  background-color: #ffffff !important;
+}
+
+/* --- Bouton --- */
+.login-button {
+  background: linear-gradient(135deg, var(--ocp-green-light), var(--ocp-green));
+  color: white;
+  padding: 0.9rem;
+  border: none;
+  border-radius: 10px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+.login-button:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--ocp-green), var(--ocp-green-dark));
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(46, 125, 50, 0.3);
+}
+
+.login-button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.login-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+/* --- Message d'erreur --- */
+.error-message {
+  background: #fef2f2;
+  color: #dc2626;
+  padding: 0.75rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+  border: 1px solid #fecaca;
+}
+
+/* --- Pied de carte --- */
+.footer {
+  margin-top: 2rem;
+  color: #666;
+  font-size: 0.85rem;
+}
+
+.footer a {
+  color: var(--ocp-green);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.footer a:hover {
+  text-decoration: underline;
+}
+
+/* --- Footer global --- */
+.page-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  text-align: center;
+  padding: 0.75rem;
+  font-size: 0.85rem;
+}
+
+/* --- Responsive --- */
+@media (max-width: 500px) {
+  .login-card {
+    margin: 1rem;
+    padding: 1.5rem;
+  }
+  
+  .ocp-logo {
+    height: 70px;
+  }
+}
