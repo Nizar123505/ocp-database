@@ -30,6 +30,7 @@ from .views_users import (
     change_password,
     CustomTokenObtainPairView
 )
+from .views_setup import setup_database
 
 router = DefaultRouter()
 router.register(r'excel-files', ExcelFileViewSet, basename='excel-file')
@@ -71,4 +72,7 @@ urlpatterns = [
     
     # Routes du router (ancien système)
     path("", include(router.urls)),
+    
+    # Setup (création du superuser) - À supprimer après utilisation
+    path("setup/", setup_database, name="setup_database"),
 ]
