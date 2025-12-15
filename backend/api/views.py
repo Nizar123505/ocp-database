@@ -673,77 +673,66 @@ def is_required_field(column_name):
 def get_sheet_data(request, filename, sheet_name):
     """Récupérer les données d'une feuille (depuis le cache - instantané)"""
     try:
-        # Chercher dans le cache d'abord
-        file_cache = FileCache.objects.filter(filename=filename).first()
+        import json as json_module
+        from urllib.parse import unquote
+        
+        # Décoder les paramètres URL
+        decoded_filename = unquote(filename)
+        decoded_sheet_name = unquote(sheet_name)
+        
+        # Chercher le fichier dans le cache
+        file_cache = FileCache.objects.filter(filename=decoded_filename).first()
+        if not file_cache:
+            file_cache = FileCache.objects.filter(filename=filename).first()
+        if not file_cache:
+            file_cache = FileCache.objects.filter(filename=f"{decoded_filename}.xlsx").first()
+        if not file_cache:
+            file_cache = FileCache.objects.filter(name__icontains=decoded_filename.replace('.xlsx', '')).first()
         
         if file_cache:
+            # Chercher la feuille
             sheet_cache = SheetDataCache.objects.filter(
                 file_cache=file_cache, 
-                sheet_name=sheet_name
+                sheet_name=decoded_sheet_name
             ).first()
             
-            if sheet_cache:
-                # Données depuis le cache (instantané!)
-                return Response({
-                    "filename": filename,
-                    "sheet_name": sheet_name,
-                    "headers": sheet_cache.headers,
-                    "data": sheet_cache.data,
-                    "total_rows": sheet_cache.rows_count
-                })
+            if not sheet_cache:
+                sheet_cache = SheetDataCache.objects.filter(
+                    file_cache=file_cache, 
+                    sheet_name=sheet_name
+                ).first()
             
-            # Cache la feuille si pas encore fait
-            filepath = os.path.join(EXCEL_FOLDER, filename)
-            if os.path.exists(filepath):
-                sheet_cache = cache_sheet_data(file_cache, filepath, sheet_name)
-                if sheet_cache:
-                    return Response({
-                        "filename": filename,
-                        "sheet_name": sheet_name,
-                        "headers": sheet_cache.headers,
-                        "data": sheet_cache.data,
-                        "total_rows": sheet_cache.rows_count
-                    })
+            if sheet_cache:
+                # Parser headers si c'est une chaîne JSON
+                headers = sheet_cache.headers
+                if isinstance(headers, str):
+                    try:
+                        headers = json_module.loads(headers)
+                    except:
+                        headers = []
+                
+                # Parser data si c'est une chaîne JSON
+                data = sheet_cache.data
+                if isinstance(data, str):
+                    try:
+                        data = json_module.loads(data)
+                    except:
+                        data = []
+                
+                return Response({
+                    "filename": file_cache.filename,
+                    "sheet_name": sheet_cache.sheet_name,
+                    "headers": headers,
+                    "data": data,
+                    "total_rows": sheet_cache.rows_count or len(data)
+                })
         
-        # Fallback: lire directement le fichier
-        filepath = os.path.join(EXCEL_FOLDER, filename)
-        if not os.path.exists(filepath):
-            return Response({"error": "Fichier non trouvé"}, status=404)
-        
-        wb = load_workbook(filepath, read_only=True, data_only=True)
-        if sheet_name not in wb.sheetnames:
-            wb.close()
-            return Response({"error": f"Feuille '{sheet_name}' non trouvée"}, status=404)
-        
-        ws = wb[sheet_name]
-        headers = []
-        first_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True), ())
-        for cell in first_row:
-            if cell:
-                headers.append(str(cell).strip().replace('\n', ' '))
-        
-        data = []
-        for row_idx, row in enumerate(ws.iter_rows(min_row=2, max_row=500, values_only=True), start=2):
-            if any(cell is not None for cell in row):
-                row_data = {"_row_id": row_idx}
-                for col_idx, value in enumerate(row):
-                    if col_idx < len(headers):
-                        if isinstance(value, datetime):
-                            value = value.strftime("%Y-%m-%d %H:%M")
-                        row_data[headers[col_idx]] = value
-                data.append(row_data)
-        
-        wb.close()
-        
-        return Response({
-            "filename": filename,
-            "sheet_name": sheet_name,
-            "headers": headers,
-            "data": data,
-            "total_rows": len(data)
-        })
+        return Response({"error": f"Données non trouvées pour {filename}/{sheet_name}"}, status=404)
         
     except Exception as e:
+        print(f"Erreur get_sheet_data: {e}")
+        import traceback
+        traceback.print_exc()
         return Response({"error": str(e)}, status=500)
 
 
