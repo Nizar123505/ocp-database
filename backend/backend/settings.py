@@ -157,5 +157,10 @@ CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', '').split(',') if 
 CORS_ALLOW_ALL_ORIGINS = DEBUG or not CORS_ALLOWED_ORIGINS
 CORS_ALLOW_CREDENTIALS = True
 
-# Dossier des fichiers Excel (en production, utiliser un stockage cloud)
-EXCEL_FOLDER = os.environ.get('EXCEL_FOLDER', str(BASE_DIR.parent))
+# Dossier des fichiers Excel
+# En local: dossier parent (fullstack_project)
+# En production (Render): dossier excel_files dans backend
+if os.environ.get('RENDER'):
+    EXCEL_FOLDER = str(BASE_DIR / 'excel_files')
+else:
+    EXCEL_FOLDER = os.environ.get('EXCEL_FOLDER', str(BASE_DIR.parent))
