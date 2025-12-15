@@ -22,7 +22,13 @@ export default function FileSheets() {
       setLoading(true);
       const response = await filesService.getSheets(decodedFilename);
       setFileInfo(response.data);
-      setSheets(response.data.sheets);
+      
+      // Parser les sheets si c'est une chaîne JSON
+      let sheetsData = response.data.sheets;
+      if (typeof sheetsData === 'string') {
+        try { sheetsData = JSON.parse(sheetsData); } catch { sheetsData = []; }
+      }
+      setSheets(Array.isArray(sheetsData) ? sheetsData : []);
     } catch (err) {
       setError("Erreur lors du chargement du fichier");
       console.error(err);

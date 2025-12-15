@@ -255,12 +255,29 @@ export default function SheetDetail() {
         filesService.getData(decodedFilename, decodedSheetName)
       ]);
       
-      setColumns(columnsRes.data.columns);
-      setHeaders(dataRes.data.headers);
-      setData(dataRes.data.data);
+      // Parser les colonnes si c'est une chaîne JSON
+      let cols = columnsRes.data.columns;
+      if (typeof cols === 'string') {
+        try { cols = JSON.parse(cols); } catch { cols = []; }
+      }
+      setColumns(Array.isArray(cols) ? cols : []);
+      
+      // Parser les headers si c'est une chaîne JSON
+      let hdrs = dataRes.data.headers;
+      if (typeof hdrs === 'string') {
+        try { hdrs = JSON.parse(hdrs); } catch { hdrs = []; }
+      }
+      setHeaders(Array.isArray(hdrs) ? hdrs : []);
+      
+      // Parser les données si c'est une chaîne JSON
+      let dt = dataRes.data.data;
+      if (typeof dt === 'string') {
+        try { dt = JSON.parse(dt); } catch { dt = []; }
+      }
+      setData(Array.isArray(dt) ? dt : []);
       
       // Initialiser avec une ligne vide
-      initializeEmptyRows(1, columnsRes.data.columns);
+      initializeEmptyRows(1, Array.isArray(cols) ? cols : []);
       
     } catch (err) {
       setError("Erreur lors du chargement des données");
