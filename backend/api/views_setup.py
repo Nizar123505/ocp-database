@@ -104,22 +104,22 @@ def setup_database(request):
                         except Exception as e:
                             results['errors'].append(f"File {fd.get('name', '?')}: {str(e)}")
                     
-                    sheets_to_create = []
+                    # Créer les feuilles une par une (bulk_create peut avoir des problèmes avec gros data)
                     for sd in data.get('sheets', []):
                         fc = file_map.get(sd.get('file_cache_id'))
                         if fc:
-                            sheets_to_create.append(SheetDataCache(
-                                file_cache=fc,
-                                sheet_name=sd['sheet_name'],
-                                headers=sd.get('headers', '[]'),
-                                columns_info=sd.get('columns_info', '[]'),
-                                data=sd.get('data', '[]'),
-                                rows_count=sd.get('rows_count', 0)
-                            ))
-                    
-                    if sheets_to_create:
-                        SheetDataCache.objects.bulk_create(sheets_to_create)
-                        results['sheets_created'] = len(sheets_to_create)
+                            try:
+                                SheetDataCache.objects.create(
+                                    file_cache=fc,
+                                    sheet_name=sd['sheet_name'],
+                                    headers=sd.get('headers', '[]'),
+                                    columns_info=sd.get('columns_info', '[]'),
+                                    data=sd.get('data', '[]'),
+                                    rows_count=sd.get('rows_count', 0)
+                                )
+                                results['sheets_created'] += 1
+                            except Exception as e:
+                                results['errors'].append(f"Sheet {sd.get('sheet_name', '?')}: {str(e)}")
                         
             except Exception as e:
                 results['errors'].append(f"Data load error: {str(e)}")
